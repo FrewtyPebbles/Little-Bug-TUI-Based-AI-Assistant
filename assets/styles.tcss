@@ -56,3 +56,9 @@ ModelMessage {
     border-right: none;
     margin: 1 0 1 1;
 }
+
+ChatInput {
+    background: rgb(30,10,10);
+    height:20%;
+    min-height:5;
+}

@@ -3,7 +3,9 @@ from textual.widgets import Static, Markdown, Label
 from textual.reactive import reactive
 import datetime
 import ollama as oll
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
+
+from lib.utility import repr_tool_args
 if TYPE_CHECKING:
     from main import AppGUI
 
@@ -22,30 +24,42 @@ class ModelMessage(Static):
     app: "AppGUI"
     content = reactive("")
     time = reactive(None)
-    def __init__(self, streaming_response:AsyncIterator[oll.ChatResponse], **kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.streaming_response = streaming_response
+        self.streaming_response:AsyncIterator[oll.ChatResponse] | None = None
 
     @work
     async def stream_message(self):
+        if not self.streaming_response:
+            raise RuntimeError("Attempt to stream message without a streaming_response set.")
         full_content = ""
+        thinking = False
         tool_calls_dict:dict[str, oll.Message.ToolCall] = {} 
         async for chunk in self.streaming_response:
             message = chunk.message
             content = message.content
             if content:
                 full_content += content
-                # Update the widget text immediately
-                self.content = full_content
+                if "<think>" in full_content and "</think>" not in full_content:
+                    thinking = True
+                if full_content.endswith("</think>"):
+                    thinking = False
+                if not thinking:
+                    self.content += content
             if message.tool_calls:
                 for tool in message.tool_calls:
-                    idx = tool.get('index', 0) # Track which tool call this is
+                    idx = tool.get('index', 0)
                     if idx not in tool_calls_dict:
                         tool_calls_dict[idx] = tool
                     else:
-                        # Merge new argument fragments into the existing ones
-                        if tool.function.arguments:
-                            tool_calls_dict[idx].function.arguments.update(tool.function.arguments)
+                        # If arguments are strings, append them; if dicts, update them
+                        incoming_args = tool.function.arguments
+                        existing_args = tool_calls_dict[idx].function.arguments
+                        
+                        if isinstance(incoming_args, str):
+                            tool_calls_dict[idx].function.arguments += incoming_args
+                        elif isinstance(incoming_args, dict):
+                            tool_calls_dict[idx].function.arguments.update(incoming_args)
         
         all_tool_calls = list(tool_calls_dict.values())
 
@@ -62,9 +76,10 @@ class ModelMessage(Static):
             
             # 2. Execute it (assuming you have a registry of functions)
             result = self.app.agent.call_tool(function_name, args)
-            
-            self.content += f"\n> Running tool ({function_name})\n```\n{result}\n```"
-            
+
+            if function_name != "finish_response_tool":
+                self.content += f"\n> Tool: {function_name}\n\narguments:`{repr_tool_args(args)}`\n```\n{result}\n```\n"
+
             # 3. ADD THIS TO THE CONTEXT
             self.app.session_data.append_history({
                 "role": "tool",
@@ -72,7 +87,9 @@ class ModelMessage(Static):
                 "name": function_name   # Helps the model link result to request
             })
 
-        self.time = datetime.datetime.now()
+            if function_name == "finish_response_tool":
+                self.time = datetime.datetime.now()
+                break
 
     def watch_time(self, old_value: datetime.datetime | None, new_value: datetime.datetime | None):
         model_message_time = self.query_one("#model-message-time", Label)

@@ -5,6 +5,7 @@ from lib.model_selection import ModelDisplay, ModelSelectionPrompt
 from textual.reactive import reactive
 import ollama as oll
 from lib.agent import Agent
+import logging
 
 from lib.session_manager import SessionData
 

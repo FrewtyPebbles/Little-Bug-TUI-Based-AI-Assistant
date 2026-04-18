@@ -19,16 +19,17 @@ class ChatInput(TextArea):
     """A TextArea that submits on Enter instead of adding a newline."""
     async def _on_key(self, event: events.Key) -> None:
         if event.key == "enter" and not event.key == "shift+enter":
-            # 1. Prevent the TextArea from adding a newline
             event.prevent_default()
             event.stop()
             
-            # 2. Get the text and clear the box
             prompt = self.text.strip()
             if prompt:
                 self.text = ""
-                # 3. Tell the ChatPage to send the prompt
                 self.screen.query_one(ChatPage).send_prompt(prompt)
+        if event.key == "shift+enter":
+            event.prevent_default()
+            event.stop()
+            self.insert("\n")
 
 class ChatPage(Static):
     app:"AppGUI"
@@ -47,13 +48,6 @@ class ChatPage(Static):
         await chat_history_container.mount(UserMessage(message["content"], datetime.datetime.now()))
         self.app.session_data.append_history(message)
 
-
-    async def append_model_message(self, streaming_response:AsyncIterator[oll.ChatResponse]):
-        chat_history_container = self.query_one("#chat-history", VerticalScroll)
-        model_message = ModelMessage(streaming_response)
-        await chat_history_container.mount(model_message)
-        self.current_stream = model_message.stream_message()
-
     @work
     async def send_prompt(self, prompt:str):
         if self.current_stream:
@@ -62,9 +56,12 @@ class ChatPage(Static):
         topic_response_cort: None | CoroutineType[Any, Any, oll.GenerateResponse] = None
         if not self.app.session_data:
             topic_response_cort = self.app.agent.oll_client.generate(self.app.current_model.model, f"Generate a descriptive title and nothing else for a text chat based on the following prompt: {prompt}",
-                think=False
+                think=False,
+                options={
+                    'think': False
+                }
             )
-            self.app.session_data = SessionData()
+            self.app.session_data = SessionData(self.app)
         
 
         await self.append_user_message({'role': 'user', 'content': prompt})
@@ -74,7 +71,5 @@ class ChatPage(Static):
             self.app.session_data.name = topic_response.response
             self.query_one("#chat-topic", Label).update(topic_response.response)
 
-        streaming_response:AsyncIterator[oll.ChatResponse] = await self.app.agent.prompt()
-        
-        await self.append_model_message(streaming_response)
+        await self.app.agent.prompt()
 
