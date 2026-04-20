@@ -81,7 +81,7 @@ class ModelMessage(Static):
             args = tool_call.function.arguments
             
             # 2. Execute it (assuming you have a registry of functions)
-            result = self.app.agent.call_tool(function_name, args)
+            result = await self.app.agent.call_tool(function_name, args)
 
             if function_name != "finish_response_tool":
                 self.content += f"\n> Tool: {function_name}\n\narguments:`{repr_tool_args(args)}`\n```\n{result}\n```\n"

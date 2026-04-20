@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Label, Static, ContentSwitcher
 from lib.chat_page import ChatPage

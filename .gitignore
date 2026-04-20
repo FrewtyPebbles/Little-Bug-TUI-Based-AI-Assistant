@@ -11,3 +11,4 @@ wheels/
 uv.lock
 .logs
 *.db
+.env

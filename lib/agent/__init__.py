@@ -6,7 +6,7 @@ import ollama as oll
 from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Literal
 from queue import Queue
 import datetime
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 import os
 import platform
@@ -29,6 +29,7 @@ from urllib.parse import urlencode, quote
 from rapidfuzz.distance import Levenshtein
 
 from lib.utility import format_contact_embedding_string
+import os
 if TYPE_CHECKING:
     from main import AppGUI
 
@@ -67,7 +68,7 @@ class AgentType:
 class Agent:
     app:"AppGUI"
     def __init__(self):
-        self.oll_client = oll.AsyncClient()
+        self.oll_client = oll.AsyncClient(os.getenv("OLLAMA_HOST"))
         self.shell = Shell()
         self.embeddings_model = SentenceTransformer('all-MiniLM-L6-v2')
         self.finished_response = False
@@ -122,14 +123,14 @@ class Agent:
         self.current_agent = self.agents[agent_name]
         self.app.session_data._history[0] = {"role":"system","content":self.current_agent.system_prompt}
 
-    def call_tool(self, function_name:str, arguments:dict) -> Any:
+    async def call_tool(self, function_name:str, arguments:dict) -> Any:
         match function_name:
             case "request_command":
-                return self.request_command(**arguments)
+                return await self.request_command(**arguments)
             case "run_command":
-                return self.run_command(**arguments)
+                return await self.run_command(**arguments)
             case "get_datetime":
-                return self.get_datetime(**arguments)
+                return await self.get_datetime(**arguments)
             case "get_operating_system":
                 return self.get_operating_system()
             case "list_items_in_directory":
@@ -268,6 +269,9 @@ class Agent:
         """
         Edits a contact in the user's contact book. If one of the optional arguments is not included, it will not be changed in the contact.
         Whenever you learn something new about an existing contact, you should add it to that contact's notes.
+        
+        IMPORTANT: make sure you always read a contact with search_contacts before you edit that contact.
+        
         Args:
             name(Required, type:str): The name of the contact. This tool will do an edit-distance fuzzy lookup of the name when searching for the contact to edit.
             email(Optional, type:str): The email of the contact.
@@ -341,9 +345,12 @@ class Agent:
         Request the current date and time for a specific timezone.
 
         Args:
-            timezone_name: The time zone to get the current date and time for. If left as None, it will use the user's time zone. The options are "UTC", "America/New_York", "America/Los_Angeles", "Europe/London", "Europe/Paris", "Asia/Tokyo", "Asia/Dubai", and "Australia/Sydney"
+            timezone_name(Optional, type:): The time zone to get the current date and time for. If not included, it will use the user's time zone. The options are "UTC", "America/New_York", "America/Los_Angeles", "Europe/London", "Europe/Paris", "Asia/Tokyo", "Asia/Dubai", and "Australia/Sydney"
         """
-        return datetime.datetime.now(ZoneInfo(timezone_name)).strftime("%d/%m/%Y, %I:%M:%S %p")
+        try:
+            return datetime.datetime.now(ZoneInfo(timezone_name) if timezone_name is not None else None).strftime("%d/%m/%Y, %I:%M:%S %p")
+        except ZoneInfoNotFoundError as e:
+            return f'"{timezone_name}" is not a valid timezone.\nValid timezones include "UTC", "America/New_York", "America/Los_Angeles", "Europe/London", "Europe/Paris", "Asia/Tokyo", "Asia/Dubai", and "Australia/Sydney"'
     
     def get_operating_system(self) -> str:
         """
