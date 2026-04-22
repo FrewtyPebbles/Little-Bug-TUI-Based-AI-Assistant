@@ -30,8 +30,22 @@ from rapidfuzz.distance import Levenshtein
 
 from tui_client.utility import format_contact_embedding_string, SRC_FOLDER
 import os
+import functools
 if TYPE_CHECKING:
     from tui_client.main import AppGUI
+
+
+def validate_tool_args(func:Callable):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        import inspect
+        sig = inspect.signature(func)
+        valid_params = set(sig.parameters.keys()) - {"self"}
+        invalid_args = set(kwargs.keys()) - valid_params
+        if invalid_args:
+            return f'"{", ".join(invalid_args)}" is not a valid argument for the "{func.__name__}" tool, valid arguments are {", ".join(valid_params)}'
+        return func(*args, **kwargs)
+    return wrapper
 
 LOGS_FILE = Path('.logs/agent.info.log')
 
@@ -164,6 +178,8 @@ class Agent:
         model_message = ModelMessage()
         await chat_history_container.mount(model_message)
         while not self.finished_response:
+            if self.finished_response:
+                break
             history_str = '\n\t'.join([
                 f"{chat_item['role']}: {chat_item['content']}" if chat_item['role'] != "tool"
                 else f"{chat_item['role']} ({chat_item['name']}): {chat_item['content']}"
@@ -184,6 +200,9 @@ class Agent:
             if chat_page.current_stream:
                 await chat_page.current_stream.wait()
                 logging.info("Finished message stream.")
+            
+            if self.finished_response:
+                break
 
         # Reset boolean
         self.finished_response = False
@@ -191,8 +210,9 @@ class Agent:
         logging.info("Finished message generation.")
 
     
-    # TOOLS
+# TOOLS
     
+    @validate_tool_args
     def add_contact(self, name:str, email:str | None = None, phone_number:str | None = None, notes:str | None = None):
         """
         Adds a contact to the user's contact book.
@@ -221,6 +241,7 @@ class Agent:
                 error_message = str(e)
                 return f"Failed to add contact: {error_message}"
         
+    @validate_tool_args
     def delete_contact(self, name:str):
         """
         Deletes a contact from the user's contact book.
@@ -243,6 +264,7 @@ class Agent:
             else:
                 return f"Failed to find contact with name: \"{name}\"\nTry searching for the contact first."
 
+    @validate_tool_args
     def search_contacts(self, query_text: str, limit: int = 5):
         """
         Searches the user's contact book for contacts based on a search prompt and returns a specified amount of results in order from most to least similar.
@@ -270,6 +292,7 @@ class Agent:
 
             return return_value
 
+    @validate_tool_args
     def edit_contact(self, name:str, email:str | None = None, phone_number:str | None = None, notes:str | None = None):
         """
         Edits a contact in the user's contact book. If one of the optional arguments is not included, it will not be changed in the contact.
@@ -309,6 +332,7 @@ class Agent:
                 error_message = str(e)
                 return f"Failed to edit contact: {error_message}"
 
+    @validate_tool_args
     async def request_command(self, command:str, command_arguments:list[str|Path]) -> None:
         """
         Request to run a shell command on the user's pc. The command is executed in the format:
@@ -323,6 +347,7 @@ class Agent:
         
         return f"Requested command \"{cmd.get_command_string()}\""
 
+    @validate_tool_args
     async def run_command(self, command:str, command_arguments:list[str|Path]) -> str:
         """
         Run a shell command on the user's pc. The command is executed in the format:
@@ -340,6 +365,7 @@ class Agent:
         logging.info("Command finished.")
         return "\n".join(executed_command)
 
+    @validate_tool_args
     async def get_datetime(self,
     timezone_name: Literal[
         "UTC", 
@@ -363,6 +389,7 @@ class Agent:
         except ZoneInfoNotFoundError as e:
             return f'"{timezone_name}" is not a valid timezone.\nValid timezones include "UTC", "America/New_York", "America/Los_Angeles", "Europe/London", "Europe/Paris", "Asia/Tokyo", "Asia/Dubai", and "Australia/Sydney"'
     
+    @validate_tool_args
     def get_operating_system(self) -> str:
         """
         Get the user's current operating system. Possible operating systems include: Windows, Linux, Darwin, and Java.  Other more rare operating systems include: FreeBSD, NetBSD, OpenBSD, SunOS, and AIX.
@@ -371,12 +398,14 @@ class Agent:
         operating_system = platform.system()
         return operating_system if operating_system != "" else "unknown"
     
+    @validate_tool_args
     def get_current_working_directory_path(self) -> str:
         """
         Get the path of the user's terminal's current working directory.
         """
         return f"{Path.cwd()}"
     
+    @validate_tool_args
     def list_items_in_directory(self, directory:str|Path) -> str:
         # Docstring set elsewhere for formatting purposes
         ret = f"File system items in directory \"{directory}\":\n"
@@ -401,6 +430,7 @@ class Agent:
         ret += f"Listed {len([*directory.iterdir()])} file system items in directory."
         return ret
     
+    @validate_tool_args
     def read_file(self, file_path:str|Path, read_from_line:int = 1, read_from_search:str | None = None, lines_before_target:int = 0, lines:int | None = None) -> str:
         """
         Read part or the entire contents of a file from the user's computer at a specific file system path. You should try to read only what you need to from the file incase it is large.
@@ -448,9 +478,9 @@ class Agent:
 
         target_line = read_from_line
 
-        # Find the target line if it's a regex search
+# Find the target line if it's a regex search
         if read_from_search != None:
-            with open(file_path, "r") as fp:
+            with open(file_path, "r", encoding="utf-8") as fp:
                 target_line = next((ln for ln, line in enumerate(fp, 1) 
                                     if re.search(read_from_search, line)), None)
             
@@ -460,7 +490,7 @@ class Agent:
         # Calculate boundaries and read
         start_line = max(1, target_line - lines_before_target)
         
-        with open(file_path, "r") as fp:
+        with open(file_path, "r", encoding="utf-8") as fp:
             content_iter = islice(fp, start_line - 1, (start_line - 1 + lines) if lines else None)
             return "".join(content_iter)
 
@@ -468,8 +498,10 @@ class Agent:
         """
         You MUST call this tool when you believe that you have finished fulfilling/answering the user's prompt/request.
         """
+        logging.info("FINISHED RESPONSE")
         self.finished_response = True
 
+    @validate_tool_args
     def send_email(self, recipient:str, subject:str, body:str, cc:list[str] | None = None):
         """
         Sends an email to the specified recipient and list of cc emails with the specified subject and body.

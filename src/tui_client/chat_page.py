@@ -37,6 +37,7 @@ class ChatInput(TextArea):
 class ChatPage(Static):
     app:"AppGUI"
     current_stream: Worker[None] | None = None
+    _user_scrolled_away: bool = False
     def compose(self) -> ComposeResult:
         yield VerticalScroll(id="chat-history")
         yield ChatInput(placeholder="Type your prompt here.", id="prompt-box")
@@ -50,6 +51,15 @@ class ChatPage(Static):
         c_t = self.query_one("#chat-topic", Label)
         c_t.styles.width = len(c_t.content)
 
+    def on_vertical_scroll(self, event) -> None:
+        chat_history = self.query_one("#chat-history", VerticalScroll)
+        max_scroll = chat_history.max_scroll_y
+        current_scroll = chat_history.scroll_y
+        if max_scroll - current_scroll > 4:
+            self._user_scrolled_away = True
+        else:
+            self._user_scrolled_away = False
+
     async def append_user_message(self, message: dict):
         # Use .update() to refresh the visual label
         chat_history_container = self.query_one("#chat-history", VerticalScroll)
@@ -58,6 +68,7 @@ class ChatPage(Static):
 
     @work
     async def send_prompt(self, prompt:str):
+        self._user_scrolled_away = False
         if self.current_stream:
             await self.current_stream.wait()
 

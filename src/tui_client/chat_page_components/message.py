@@ -3,6 +3,7 @@ import logging
 from plyer import notification
 from textual import work
 from textual.widgets import Static, Markdown, Label
+from textual.containers import VerticalScroll
 from textual.reactive import reactive
 import datetime
 import ollama as oll
@@ -36,6 +37,8 @@ class ModelMessage(Static):
         if not self.streaming_response:
             raise RuntimeError("Attempt to stream message without a streaming_response set.")
         full_content = ""
+        content_buffer = ""
+        BUFFER_SIZE = 100
         thinking = False
         tool_calls_dict:dict[str, oll.Message.ToolCall] = {}
         thinking_text = ""
@@ -51,7 +54,10 @@ class ModelMessage(Static):
                 if full_content.endswith("</think>"):
                     thinking = False
                 if not thinking:
-                    self.content += content
+                    content_buffer += content
+                    if len(content_buffer) >= BUFFER_SIZE:
+                        self.content += content_buffer
+                        content_buffer = ""
             if message.tool_calls:
                 for tool in message.tool_calls:
                     idx = tool.get('index', 0)
@@ -66,6 +72,9 @@ class ModelMessage(Static):
                             tool_calls_dict[idx].function.arguments += incoming_args
                         elif isinstance(incoming_args, dict):
                             tool_calls_dict[idx].function.arguments.update(incoming_args)
+        
+        if content_buffer:
+            self.content += content_buffer
         
         all_tool_calls = list(tool_calls_dict.values())
 
@@ -84,7 +93,7 @@ class ModelMessage(Static):
             result = await self.app.agent.call_tool(function_name, args)
 
             if function_name != "finish_response_tool":
-                self.content += f"\n> Tool: {function_name}\n\narguments:`{repr_tool_args(args)}`\n```\n{result}\n```\n"
+                self.content += f"\n> Tool: {function_name}\n\narguments:\n\n{repr_tool_args(args)}\n ---\n"#```\n{result}\n```\n"
 
             # 3. ADD THIS TO THE CONTEXT
             self.app.session_data.append_history({
@@ -95,7 +104,6 @@ class ModelMessage(Static):
 
             if function_name == "finish_response_tool":
                 self.time = datetime.datetime.now()
-                break
         logging.info(f"MODEL THINKING:\n{thinking_text}")
 
     def watch_time(self, old_value: datetime.datetime | None, new_value: datetime.datetime | None):
@@ -110,6 +118,10 @@ class ModelMessage(Static):
         model_message_content = self.query_one("#model-message-content", Markdown)
         if model_message_content:
             model_message_content.update(new_value)
+            chat_page = self.app.screen.query_one("ChatPage")
+            if not chat_page._user_scrolled_away:
+                chat_history = chat_page.query_one("#chat-history", VerticalScroll)
+                chat_history.scroll_y = chat_history.max_scroll_y
 
     def compose(self):
         yield Markdown(id="model-message-content")
