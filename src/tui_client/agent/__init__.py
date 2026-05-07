@@ -177,7 +177,8 @@ class Agent:
         chat_history_container = chat_page.query_one("#chat-history", VerticalScroll)
         model_message = ModelMessage()
         await chat_history_container.mount(model_message)
-        while not self.finished_response:
+        response_count = 0
+        while not self.finished_response and response_count < 10:
             if self.finished_response:
                 break
             history_str = '\n\t'.join([
@@ -186,12 +187,14 @@ class Agent:
                 for chat_item in self.app.session_data.get_history()
             ])
             logging.info(f"""Current message history ({datetime.datetime.now().strftime("%d/%m/%Y, %H:%M:%S")}):\n{history_str}""")
+            
             streaming_response:AsyncIterator[oll.ChatResponse] =  await self.oll_client.chat(model=self.app.current_model.model, messages=self.app.session_data.get_history(),
                 think=True,
                 stream=True,
                 tools=self.current_agent.tools,
             )
 
+            response_count += 1
 
             model_message.streaming_response = streaming_response
             
@@ -437,10 +440,10 @@ class Agent:
 
         Args:
             file_path(type:str|Path): The file system path to the file on the user's computer to read the contents of.
-            read_from_line(type:int): This is an integer line number starting from 1 to start reading from. The default value is 1 (the first line).
-            read_from_search(type:str|None): If this argument is not None, the tool will read from the first regex match of this string in the file and ignore the value of read_from_line. The default value is None.
-            lines_before_target(type:int): This specifies a number of lines to read before the read_from_line or read_from_search line.
-            lines(type:int|None): If lines is an integer, this many lines will be read from read_from_target. If lines is None, the whole file will be read from the read_from_line or read_from_search line. The default value is None.
+            read_from_line(type:int, Optional): This is an integer line number starting from 1 to start reading from. The default value is 1 (the first line).
+            read_from_search(type:str, Optional): If this argument is not None, the tool will read from the first regex match of this string in the file and ignore the value of read_from_line. The default value is None.
+            lines_before_target(type:int, Optional): This specifies a number of lines to read before the read_from_line or read_from_search line.
+            lines(type:int, Optional): If lines is an integer, this many lines will be read from read_from_target. If lines is None, the whole file will be read from the read_from_line or read_from_search line. The default value is None.
         
         The lines of the file read can be described by the following pseudocode:
         ```
