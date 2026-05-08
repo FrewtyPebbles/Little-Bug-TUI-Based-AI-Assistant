@@ -15,7 +15,7 @@ A local-first, terminal-based AI assistant built with Ollama and Textual. Intera
 > A checked box means the feature has been tested and is functional.
 
  - [ ] Enables chat communications between users
- - [ ] Network centralized contact / document RAG
+ - [ ] Network centralized contact / document embeddings based RAG
  - [ ] Global RBAC and user level secured RAG
 
 ## 🛠️ Tech Stack
