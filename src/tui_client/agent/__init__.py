@@ -89,7 +89,7 @@ class Agent:
     def __init__(self):
         self.oll_client = oll.AsyncClient(os.getenv("OLLAMA_HOST"))
         self.shell = Shell()
-        self.embeddings_model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.embeddings_model = SentenceTransformer("Qwen/Qwen3-VL-Embedding-2B")
         self.finished_response = False
         self.currently_responding = False
         contacts = []

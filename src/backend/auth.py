@@ -1,6 +1,5 @@
 from __future__ import annotations
-from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
-from fastmcp.server.auth import AuthContext
+from fastmcp.server.auth import AuthContext, StaticTokenVerifier
 
 class Permission:
     permissions:dict[str, Permission] = {}
@@ -36,7 +35,7 @@ class Role:
         cls.roles[role.name] = role
 
     @classmethod
-    def has_role(cls, *roles: str):
+    def mcp_has_role(cls, *roles: str):
         target_roles_set = set([Role.roles[role] for role in roles])
         def check(ctx: AuthContext) -> bool:
             if ctx.token is None:
@@ -53,7 +52,7 @@ class Role:
 Role.add(Role("user", description="This is the default role for all authenticated users."))
 Role.add(Role("admin", {"user"}, description="This role has access to server consoles."))
 
-VERIFIER = StaticTokenVerifier(
+MCP_VERIFIER = StaticTokenVerifier(
     tokens={
         "dev-alice-token": {
             "client_id": "alice@company.com",

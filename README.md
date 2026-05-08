@@ -1,14 +1,22 @@
 # Little Bug 🐛
 
-A local-first, terminal-based AI assistant built with Ollama and Textual. Interact with local AI models securely from your terminal.
+A local-first, terminal-based AI assistant built with Ollama and Textual. Interact with local AI models from your terminal.
 
 ## 🌟 Features
 
-- **Local-First**: All AI processing happens locally on your machine
-- **Multiple Models**: Switch between different Ollama models seamlessly
-- **Streaming Responses**: Real-time chat updates as the model generates text
-- **Tool Support**: Function calling for enhanced capabilities
-- **Vector Embeddings**: RAG (Retrieval-Augmented Generation) support via SQLite-Vec
+ - **Local-First**: All AI processing happens locally on your machine
+ - **Multiple Models**: Switch between different Ollama models seamlessly
+ - **Streaming Responses**: Real-time chat updates as the model generates text
+ - **Tool Support**: Function calling for enhanced capabilities
+ - **Vector Embeddings**: RAG (Retrieval-Augmented Generation) support via SQLite-Vec
+
+## Experimental Backend features (currently WIP)
+
+> A checked box means the feature has been tested and is functional.
+
+ - [ ] Enables chat communications between users
+ - [ ] Network centralized contact / document RAG
+ - [ ] Global RBAC and user level secured RAG
 
 ## 🛠️ Tech Stack
 
