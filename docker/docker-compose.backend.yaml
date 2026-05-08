@@ -56,6 +56,7 @@ services:
       - redis_data:/data
 
   ## Vector/Relational Database
+  
   postgres-application:
     image: postgres:16
     volumes:
