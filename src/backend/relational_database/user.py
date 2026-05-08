@@ -11,7 +11,6 @@ from sqlalchemy import ForeignKey
 from sqlalchemy.orm import validates, Mapped, mapped_column, relationship, object_session, Session as SessionType
 from backend.relational_database.sanitize import EMAIL_REGEX
 from sqlalchemy import event
-from backend.mongo_database.ai_chat_session import AISession, AIMessage
 from backend.mongo_database.user_chat_session import UserSession, UserMessage
 from beanie.operators import In
 
@@ -69,7 +68,6 @@ def clean_up_after_commit(session: SessionType):
 
     async def async_cleanup(ids):
         await UserSession.find(In(UserSession.user_id, ids)).delete()
-        await AISession.find(In(UserSession.user_id, ids)).delete()
 
     try:
         loop = asyncio.get_running_loop()

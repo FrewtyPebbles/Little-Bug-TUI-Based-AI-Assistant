@@ -49,6 +49,21 @@ class Role:
             ])
         return check
     
+    @classmethod
+    def mcp_has_role(cls, *roles: str):
+        target_roles_set = set([Role.roles[role] for role in roles])
+        def check(ctx: AuthContext) -> bool:
+            if ctx.token is None:
+                return False
+            user_role:str = ctx.token.claims.get("roles", [])
+            role = cls.roles[user_role]
+            return role in target_roles_set or any([
+                target_role.is_subordinate(role)
+                for target_role
+                in target_roles_set
+            ])
+        return check
+    
 Role.add(Role("user", description="This is the default role for all authenticated users."))
 Role.add(Role("admin", {"user"}, description="This role has access to server consoles."))
 
