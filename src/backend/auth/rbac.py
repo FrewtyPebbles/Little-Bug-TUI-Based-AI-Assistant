@@ -34,41 +34,27 @@ class Role:
         return permission in self.permissions or any([sub.has_permission(permission) for sub in self.subordinate_roles])
 
     @classmethod
-    def add(cls, role:Role):
-        KEYCLOAK_AUTH_MANAGER.create_role(role)
+    def add(cls, role:Role) -> Role: # THIS SHOULD ONLY BE CALLED ONCE ON SERVER BOOT
         cls.roles[role.name] = role
+        return role
 
     @classmethod
-    def mcp_has_role(cls, *roles: str):
-        target_roles_set = set([Role.roles[role] for role in roles])
-        def check(ctx: AuthContext) -> bool:
-            if ctx.token is None:
-                return False
-            user_role:str = ctx.token.claims.get("roles", [])
-            role = cls.roles[user_role]
-            return role in target_roles_set or any([
-                target_role.is_subordinate(role)
+    def has_role(cls, user_roles_names:list[str], target_roles_names:list[str]) -> bool:
+        target_roles_set = set([Role.roles[role] for role in target_roles_names])
+        for user_role in user_roles_names:
+            if user_role in target_roles_set or any([
+                target_role.is_subordinate(user_role)
                 for target_role
                 in target_roles_set
-            ])
-        return check
+            ]):
+                return True
+        return False
     
     @classmethod
     def mcp_has_role(cls, *roles: str):
-        target_roles_set = set([Role.roles[role] for role in roles])
         def check(ctx: AuthContext) -> bool:
             if ctx.token is None:
                 return False
-            user_role:str = ctx.token.claims.get("roles", [])
-            role = cls.roles[user_role]
-            return role in target_roles_set or any([
-                target_role.is_subordinate(role)
-                for target_role
-                in target_roles_set
-            ])
+            user_roles:list[str] = ctx.token.claims.get("roles", [])
+            return cls.has_role(user_roles, roles)
         return check
-    
-# CREATE BASE ROLES
-
-Role.add(Role("user", description="This is the default role for all authenticated users."))
-Role.add(Role("admin", {"user"}, description="This role has access to server consoles."))

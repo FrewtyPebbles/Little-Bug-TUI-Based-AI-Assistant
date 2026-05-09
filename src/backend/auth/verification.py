@@ -3,6 +3,7 @@ import uuid
 from fastapi import Depends, HTTPException, status
 from fastmcp.server.auth.oidc_proxy import OIDCProxy
 from fastmcp.server.dependencies import get_access_token
+from backend.auth.rbac import Role
 from backend.config import ENVIRONMENT
 from fastapi.security import OAuth2PasswordBearer
 from keycloak import KeycloakOpenID
@@ -19,26 +20,32 @@ keycloak_openid = KeycloakOpenID(
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{ENVIRONMENT.KEYCLOAK_URL}realms/{ENVIRONMENT.KEYCLOAK_REALM}/protocol/openid-connect/token"
 )
+def fastapi_get_user_with_roles(*roles:str):
+    async def handler(token: str = Depends(oauth2_scheme)):
+        try:
+            # Fetch Keycloak Public Key
+            public_key = "-----BEGIN PUBLIC KEY-----\n" + \
+                        keycloak_openid.public_key() + \
+                        "\n-----END PUBLIC KEY-----"
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    try:
-        # Fetch Keycloak Public Key
-        public_key = "-----BEGIN PUBLIC KEY-----\n" + \
-                     keycloak_openid.public_key() + \
-                     "\n-----END PUBLIC KEY-----"
+            # Decode and Verify Token
+            token_info = keycloak_openid.decode_token(
+                token,
+                key=public_key,
+                algorithms=["RS256"]
+            )
 
-        # Decode and Verify Token
-        token_info = keycloak_openid.decode_token(
-            token,
-            key=public_key,
-            algorithms=["RS256"]
-        )
-        return token_info
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid or expired token: {str(e)}"
-        )
+            user_roles:list[str] = token_info.get("roles", [])
+            if Role.has_role(user_roles, roles):
+                return token_info
+            else:
+                raise Exception("User does not have the required priviledge")
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid or expired token: {str(e)}"
+            )
+    return handler
 
 # MCP
 
