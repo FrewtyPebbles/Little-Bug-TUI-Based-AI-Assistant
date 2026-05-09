@@ -5,4 +5,4 @@ from fastmcp import FastMCP
 
 
 MCP = FastMCP("ai_tools")
-EMBEDDINGS_MODEL = SentenceTransformer("Qwen/Qwen3-VL-Embedding-2B")
+EMBEDDINGS_MODEL = SentenceTransformer("Qwen/Qwen3-VL-Embedding-2B", truncate_dim=2048)

@@ -3,11 +3,12 @@
 import asyncio
 from dataclasses import dataclass
 import re
+import uuid
 
-from backend.auth import Role
+from backend.auth.verification import Role
 from backend.relational_database.contact import Contact
 from tui_client.database.engine import SQLBase, SQLiteVector, Session
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, UUID, String
 from sqlalchemy.orm import validates, Mapped, mapped_column, relationship, object_session, Session as SessionType
 from backend.relational_database.sanitize import EMAIL_REGEX
 from sqlalchemy import event
@@ -18,7 +19,7 @@ class UserRole(SQLBase):
     __tablename__ = "user_role"
     id:Mapped[int] = mapped_column(primary_key=True, nullable=False)
     user_id:Mapped[int] = mapped_column(ForeignKey("user.id"))
-    user:Mapped["User"] = relationship(back_populates="roles")
+    user:Mapped["User"] = relationship(lazy="selectin", back_populates="roles")
     role:Mapped[str] =  mapped_column(nullable=False)
 
     @validates('role')
@@ -32,12 +33,12 @@ class UserRole(SQLBase):
 class User(SQLBase):
     __tablename__ = "user"
     id:Mapped[int] = mapped_column(primary_key=True, nullable=False)
-    # This info is so the assistant knows who it's talking to
+    username:Mapped[str] = mapped_column(String(30), nullable=False)
     email:Mapped[str] = mapped_column(nullable=False)
     first_name:Mapped[str] = mapped_column(nullable=False)
     last_name:Mapped[str] = mapped_column(nullable=False)
-    roles:Mapped[list[UserRole]] = relationship(back_populates="user")
-    contacts:Mapped[list[Contact]] = relationship(back_populates="user")
+    roles:Mapped[list[UserRole]] = relationship(lazy="selectin", back_populates="user")
+    contacts:Mapped[list[Contact]] = relationship(lazy="selectin", back_populates="user")
     
     @validates('email')
     def validate_email(self, key, address):

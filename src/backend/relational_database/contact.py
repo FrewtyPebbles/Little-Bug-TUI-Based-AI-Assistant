@@ -6,6 +6,7 @@ from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import validates, Mapped, mapped_column, relationship
 from backend.relational_database.sanitize import EMAIL_REGEX, PHONE_NUMBER_REGEX
 from backend.relational_database.user import User
+from pgvector.sqlalchemy import VECTOR
 
 class Contact(SQLBase):
     # TODO: Add retrieval counter, to keep track of which contacts are used most.
@@ -15,11 +16,11 @@ class Contact(SQLBase):
     user_id:Mapped[int] = mapped_column(ForeignKey("user.id"))
     user:Mapped["User"] = relationship(back_populates="contacts")
     first_name:Mapped[str] = mapped_column(nullable=False)
-    last_name:Mapped[str] = mapped_column(nullable=True)
+    last_name:Mapped[str] = mapped_column(nullable=True, default='')
     email:Mapped[str] = mapped_column(nullable=True)
     phone_number:Mapped[str] = mapped_column(String(16), nullable=True)
     notes:Mapped[str] = mapped_column(nullable=True)
-    embedding:Mapped[list[float]] = mapped_column(SQLiteVector, nullable=True)
+    embedding:Mapped[list[float]] = mapped_column(VECTOR(2048), nullable=True)
 
     @classmethod
     def format_contact_embedding_string(first_name:str, last_name:str | None = None, email:str | None = None, phone_number:str | None = None, notes:str | None = None):

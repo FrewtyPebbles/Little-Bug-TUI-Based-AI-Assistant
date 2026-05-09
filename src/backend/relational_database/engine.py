@@ -1,39 +1,57 @@
 import struct
+from types import CoroutineType
+from sqlalchemy import text
 from sqlalchemy.orm import declarative_base, sessionmaker
 import sqlite_vec
-from sqlalchemy import LargeBinary, TypeDecorator, create_engine, event
-from rapidfuzz.distance import Levenshtein
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.engine import URL
+from backend.config import ENVIRONMENT
+import asyncio
 
-SQL_ENGINE = create_engine("sqlite:///database.db")
-
-@event.listens_for(SQL_ENGINE, "connect")
-def load_extension(dbapi_con, con_record):
-    dbapi_con.enable_load_extension(True)
-    sqlite_vec.load(dbapi_con)
-    dbapi_con.enable_load_extension(False)
-
-@event.listens_for(SQL_ENGINE, "connect")
-def add_custom_functions(dbapi_connection, connection_record):
-    # Register the Python function 'Levenshtein.distance' as 'levenshtein' in SQL
-    # The '2' indicates it takes two arguments
-    dbapi_connection.create_function("levenshtein", 2, Levenshtein.distance)
-
-Session = sessionmaker(bind=SQL_ENGINE)
+SQL_URL = URL.create(
+    drivername="postgresql+asyncpg",
+    username=ENVIRONMENT.APP_DB_USERNAME,
+    password=ENVIRONMENT.APP_DB_PASSWORD, # Handles special characters for you
+    host="localhost",
+    port=5432,
+    database=ENVIRONMENT.APP_DB
+)
+SQL_URL
+SQL_ENGINE = create_async_engine(SQL_URL, echo=True)
 
 SQLBase = declarative_base()
 
-class SQLiteVector(TypeDecorator):
-    impl = LargeBinary
-    cache_ok = True
+async def setup_database():
+    async with SQL_ENGINE.begin() as conn:
+        # Create extensions
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS fuzzystrmatch"))
+        
+        # Optionally create your tables
+        await conn.run_sync(SQLBase.metadata.create_all)
 
-    def process_bind_param(self, value, dialect) -> bytes | None:
-        if value is not None:
-            return sqlite_vec.serialize_float32(value)
-        return None
+Session = async_sessionmaker(
+    bind=SQL_ENGINE,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
-    def process_result_value(self, value, dialect) -> list[float] | None:
-        if value is None:
-            return None
-        # Convert binary blob back to list [0.1, 0.2...]
-        num_floats = len(value) // 4
-        return list(struct.unpack(f'{num_floats}f', value))
+class _SQLJobManager:
+    """
+    A singleton for managing sql jobs.
+    """
+    def __init__(self):
+        self.jobs_by_model:dict[str, list[CoroutineType]] = {}
+
+    def add(self, model:str, job:CoroutineType):
+        if model not in self.jobs_by_model:
+            self.jobs_by_model[model] = []
+        self.jobs_by_model[model].append(job)
+
+    async def wait(self, *model_dependencies:str):
+        dependencies:list[CoroutineType] = []
+        for jobs in (self.jobs_by_model[model] for model in model_dependencies):
+            dependencies.extend(jobs)
+        await asyncio.gather(*dependencies)
+
+SQL_JOB_MANAGER = _SQLJobManager()

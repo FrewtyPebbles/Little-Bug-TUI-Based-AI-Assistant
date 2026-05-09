@@ -23,8 +23,8 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: ${AUTH_DB_USERNAME}
       KC_DB_PASSWORD: ${AUTH_DB_PASSWORD}
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
     ports:
       - "8080:8080"
     depends_on:
@@ -56,13 +56,13 @@ services:
       - redis_data:/data
 
   ## Vector/Relational Database
-  
+
   postgres-application:
-    image: postgres:16
+    image: pgvector/pgvector:16
     volumes:
       - postgres_app_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: application
+      POSTGRES_DB: ${APP_DB}
       POSTGRES_USER: ${APP_DB_USERNAME}
       POSTGRES_PASSWORD: ${APP_DB_PASSWORD}
     healthcheck:

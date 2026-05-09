@@ -1,5 +1,7 @@
 from __future__ import annotations
-from fastmcp.server.auth import AuthContext, StaticTokenVerifier
+from fastmcp.server.auth import AuthContext
+
+from backend.auth.keycloak import KEYCLOAK_AUTH_MANAGER
 
 class Permission:
     permissions:dict[str, Permission] = {}
@@ -16,6 +18,7 @@ class Role:
         self.name = name
         self.permissions:set[Permission] = permissions if permissions else set()
         self.subordinate_roles:set[Role] = set([self.roles[sub] for sub in subordinate_roles]) if subordinate_roles else set()
+        self.description = description
 
     def __hash__(self):
         return hash(self.name)
@@ -32,6 +35,7 @@ class Role:
 
     @classmethod
     def add(cls, role:Role):
+        KEYCLOAK_AUTH_MANAGER.create_role(role)
         cls.roles[role.name] = role
 
     @classmethod
@@ -64,20 +68,7 @@ class Role:
             ])
         return check
     
+# CREATE BASE ROLES
+
 Role.add(Role("user", description="This is the default role for all authenticated users."))
 Role.add(Role("admin", {"user"}, description="This role has access to server consoles."))
-
-MCP_VERIFIER = StaticTokenVerifier(
-    tokens={
-        "dev-alice-token": {
-            "client_id": "alice@company.com",
-            "scopes": ["read:data", "write:data", "admin:users"],
-            # add any custom claims here, readable via TokenClaim
-        },
-        "dev-guest-token": {
-            "client_id": "guest-user",
-            "scopes": ["read:data"],
-        },
-    },
-    required_scopes=["read:data"]
-)
