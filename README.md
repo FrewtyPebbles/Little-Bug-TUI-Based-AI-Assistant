@@ -12,6 +12,6 @@ A terminal-based assistant using agentic AI built for security and scale. This s
 
 > A checked box means the feature has been tested and is functional.
 
+ - [ ] Global RBAC and user groups secured RAG - in progress
+ - [ ] Network centralized contact / document embeddings based RAG using Cassandra - in progress
  - [ ] Enables chat communications between users
- - [ ] Network centralized contact / document embeddings based RAG using mongodb
- - [ ] Global RBAC and user level secured RAG
