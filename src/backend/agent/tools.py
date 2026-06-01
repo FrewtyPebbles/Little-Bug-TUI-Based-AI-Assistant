@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable
+from typing import Any, Callable, Self
 
 
 @dataclass
@@ -33,8 +33,8 @@ class ToolResponse(ABC):
     def from_dict(cls, dictionary:dict) -> Self:
         return cls(dictionary["name"], dictionary["response"], dictionary["id"])
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def serialize(cls, instance:"ToolResponse") -> dict:
         """
         This serializes the tool response for the specific llm backend.

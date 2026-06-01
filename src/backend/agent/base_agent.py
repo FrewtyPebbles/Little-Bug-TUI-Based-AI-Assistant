@@ -2,28 +2,28 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, AsyncIterator, Callable, Generic, Iterator, Self, TypeVar
-from queue import Queue
 from backend.agent import ToolCall, ToolResponse, ToolRegistry
+import asyncio
 
 @dataclass
 class ResponseChunk:
-    tool_calls:list[ToolCall]|None = None
     content:str
+    tool_calls:list[ToolCall]|None = None
     thinking:bool = False
 
 class BaseStreamResponse(ABC):
     """
-    This is an itterator which is a generic streaming response for any of the supported backends.
+    This is an itterator which is a generic streaming response for any of the supported llm backends.
     """
-    chunk_queue:Queue[ResponseChunk|ToolCall|ToolResponse|None]
+    chunk_queue:asyncio.Queue[ResponseChunk|ToolCall|ToolResponse|None]
 
-    async def get_chunks(self) -> AsyncIterator[ResponseChunk]:
-        while chunk := self.chunk_queue.get():
+    async def get_chunks(self) -> AsyncIterator[ResponseChunk|ToolCall|ToolResponse]:
+        while chunk := await self.chunk_queue.get():
             yield chunk
 
-    def __aiter__(self) -> AsyncIterator[ResponseChunk]:
+    def __aiter__(self) -> AsyncIterator[ResponseChunk|ToolCall|ToolResponse]:
         res = self.get_chunks()
-        self.listen_for_chunks()
+        asyncio.create_task(self.listen_for_chunks())
         return res
 
     @abstractmethod
@@ -79,8 +79,8 @@ class Message(ABC):
 
         return cls(dictionary["content"], dictionary["sender"], tool_calls, dictionary["images"], dictionary["thinking"])
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def serialize(cls, instance:"Message") -> dict:
         """
         This method converts the message to the schema that the llm backend uses.

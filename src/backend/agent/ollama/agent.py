@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, AsyncIterator
 
 from backend.agent import BaseAgent, Message, MessageSender, ToolResponse, BaseChatHistory, BaseStreamResponse, ResponseChunk
@@ -59,6 +60,7 @@ class OllamaStreamResponse(BaseStreamResponse):
     def __init__(self, raw_streaming_response:AsyncIterator[ollama.ChatResponse], agent:"OllamaAgent"):
         self.raw_streaming_response = raw_streaming_response
         self.agent = agent
+        self.chunk_queue = asyncio.Queue()
 
     async def listen_for_chunks(self):
         thinking = None
@@ -72,14 +74,14 @@ class OllamaStreamResponse(BaseStreamResponse):
                     thinking = thinking_chunk
                 else:
                     thinking += thinking_chunk
-                self.chunk_queue.put(ResponseChunk(thinking=True, content=thinking_chunk))
+                await self.chunk_queue.put(ResponseChunk(thinking=True, content=thinking_chunk))
                 continue
             
             content_chunk = ""
             if 'content' in message and message['content']:
                 content_chunk = message['content']
                 content += content_chunk
-                self.chunk_queue.put(ResponseChunk(content=content_chunk))
+                await self.chunk_queue.put(ResponseChunk(content=content_chunk))
 
             if 'tool_calls' in message and message['tool_calls']:
                 for tool_call in message['tool_calls']:
@@ -96,26 +98,37 @@ class OllamaStreamResponse(BaseStreamResponse):
                     arg_fragment = tool_call.get("function", {}).get("arguments", "")
                     tool_calls_accumulator[index]["arguments"] += arg_fragment
         
+
+        tool_calls = []
+        tool_responses = []
         for _, tool in tool_calls_accumulator.items():
             tool_name = tool["name"]
             tool_id = tool["id"]
             tool_args = json.loads(tool["arguments"])
 
             tool_call = ToolCall(tool_id, tool_name, tool_args)
-            self.chunk_queue.put(tool_call)
-            self.agent.history.append(tool_call)
+            tool_calls.append(tool_call)
+            await self.chunk_queue.put(tool_call)
             if tool_name in self.agent.tools:
                 result = self.agent.tools[tool_call.function_name].execute(**tool_call.arguments)
                 tool_response = ToolResponse(tool_name, result, tool_id)
-                self.chunk_queue.put(tool_response)
-                self.agent.history.append(tool_response)
+                tool_responses.append(tool_response)
+                await self.chunk_queue.put(tool_response)
             else:
                 tool_error = f"The tool \"{tool_name}\" is not an existing tool."
                 tool_response = ToolResponse(tool_name, tool_error, tool_id)
-                self.chunk_queue.put(tool_response)
-                self.agent.history.append(tool_response)
+                tool_responses.append(tool_response)
+                await self.chunk_queue.put(tool_response)
 
-        self.chunk_queue.put(None)
+        await self.chunk_queue.put(None)
+        
+        message1 = OllamaMessage(content, MessageSender.Agent, tool_calls=tool_calls, thinking=thinking)
+        self.agent.history.append(message1)
+
+        for tool_response in tool_responses:
+            self.agent.history.append(tool_response)
+        
+            
 
 class OllamaAgent(BaseAgent):
     def __init__(self, host:str, model:str, history:dict|None = None, system_prompt:str = ""):
@@ -127,6 +140,8 @@ class OllamaAgent(BaseAgent):
             self.history = OllamaChatHistory(system_prompt)
         
     async def prompt(self, content:str, images:list[bytes]|None = None) -> OllamaStreamResponse:
+        message = OllamaMessage(content, MessageSender.User, images=images)
+        self.history.append(message)
         raw_streaming_response = await self.client.chat(
             model=self.model,
             messages=self.history.serialize(),
