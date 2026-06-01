@@ -4,10 +4,20 @@ from keycloak import KeycloakAdmin
 from backend.config import ENVIRONMENT
 from typing import TYPE_CHECKING
 from shared.config import SHARED_ENVIRONMENT
-
 from backend.relational_database.user import User
+import uuid
 if TYPE_CHECKING:
     from backend.auth.rbac import Role
+
+class KeycloakUserInfo:
+    def __init__(self, raw_keycloak_user:dict):
+        self.id:uuid.UUID = uuid.UUID(raw_keycloak_user["id"])
+        self.username:str = raw_keycloak_user["username"]
+        self.email:str = raw_keycloak_user["email"]
+        self.first_name:str = raw_keycloak_user["firstName"]
+        self.last_name:str = raw_keycloak_user["lastName"]
+        self.enabled:bool = raw_keycloak_user["enabled"]
+        self.email_verified:bool = raw_keycloak_user["emailVerified"]
 
 class KeycloakAuthManager:
     def __init__(self, api_client_uuid:str, cli_client_uuid:str):
@@ -21,6 +31,8 @@ class KeycloakAuthManager:
             client_id=ENVIRONMENT.KEYCLOAK_API_CLIENT_ID,
             client_secret_key=ENVIRONMENT.KEYCLOAK_API_CLIENT_SECRET
         )
+    def get_user(self, user_id:uuid.UUID):
+        return KeycloakUserInfo(self.keycloak_admin.get_user(user_id, True))
 
     def add_user(self, user:User, password:str):
         user_payload = {
@@ -28,7 +40,7 @@ class KeycloakAuthManager:
             "email": user.email,
             "firstName": user.first_name,
             "lastName": user.last_name,
-            "database_id":user.id,
+            "emailVerified":not ENVIRONMENT.REQUIRE_EMAIL_VERIFICATION,
             "enabled": True,
             "credentials": [{"type": "password", "value": password, "temporary": False}]
         }
@@ -121,7 +133,7 @@ __cli_client_payload = {
     "standardFlowEnabled": True,    # Enables Authorization Code Flow
     "directAccessGrantsEnabled": False,
     "attributes": {
-        "pkce.code.challenge.method": "S256" # Enforce PKCE
+        "pkce.code.challenge.method": "RS256" # Enforce PKCE
     }
 }
 
@@ -164,10 +176,11 @@ __api_access_client_scope_role_mapper = {
     "protocolMapper": "oidc-usermodel-realm-role-mapper",
     "config": {
         "claim.name": "roles", 
-        "jsonType.label": "String",
         "multivalued": "true",
+        "jsonType.label": "String",
         "access.token.claim": "true",
-        "userinfo.token.claim": "false"
+        "userinfo.token.claim": "true",
+        "id.token.claim": "true",
     }
 }
 

@@ -1,6 +1,7 @@
 from typing import Iterable
+import uuid
 
-from sqlalchemy import Row, and_, or_, select, func
+from sqlalchemy import Row, and_, delete, or_, select, func
 import sqlite_vec
 
 from backend.relational_database.contact import Contact
@@ -28,10 +29,6 @@ async def add_contact(
     """
     user_id = mcp_get_user_id()
     async with Session(bind=SQL_ENGINE) as session:
-        await SQL_JOB_MANAGER.wait("user")
-        user = await session.get(User, user_id)
-        if not user:
-            raise Exception(f"User with id {user_id} does not exist")
         embedding_string = Contact.format_contact_embedding_string(first_name, last_name, email, phone_number, notes)
         embedding = EMBEDDINGS_MODEL.encode(embedding_string).tolist()
         contact = Contact(
@@ -44,13 +41,13 @@ async def add_contact(
             embedding=embedding
         )
 
-        user.contacts.append(contact)
+        session.add(contact)
 
         try:
-            SQL_JOB_MANAGER.add("contact", session.commit())
+            SQL_JOB_MANAGER.add(f"contact{user_id}", session.commit())
             return f"Successfully added contact: \"{first_name}\""
         except Exception as e:
-            SQL_JOB_MANAGER.add("contact", session.rollback())
+            SQL_JOB_MANAGER.add(f"contact{user_id}", session.rollback())
             error_message = str(e)
             return f"Failed to add contact: {error_message}"
 
@@ -64,27 +61,26 @@ async def delete_contact(first_name:str, last_name:str):
     """
     user_id = mcp_get_user_id()
     async with Session(bind=SQL_ENGINE) as session:
-        await SQL_JOB_MANAGER.wait("user", "contact")
-        user = await session.get(User, user_id)
-        if not user:
-            raise Exception(f"User with id {user_id} does not exist")
-        contact = next((c for c in user.contacts if c.first_name == first_name and last_name), None)
+        await SQL_JOB_MANAGER.wait(f"contact{user_id}")
+        stmt = (
+            delete(Contact)
+            .where(
+                Contact.user_id == user_id,
+                Contact.first_name == first_name,
+                Contact.last_name == last_name,
+            )
+        )
+        result = await session.execute(stmt)
 
-        if not contact:
+        if result.rowcount == 0:
             return await contact_suggestion(session, user_id, first_name, last_name)
-
-        if contact:
-            user.contacts.remove(contact)
-    
-            # 3. Commit the change to the file
-            try:
-                SQL_JOB_MANAGER.add("contact", session.commit())
-                return f"Successfully deleted contact: \"{first_name}\""
-            except Exception as e:
-                SQL_JOB_MANAGER.add("contact", session.rollback())
-                return f"Error deleting contact: {str(e)}"
-        else:
-            return f"Failed to find contact with name: \"{first_name}\"\nTry searching for the contact first."
+        
+        try:
+            SQL_JOB_MANAGER.add(f"contact{user_id}", session.commit())
+            return f"Successfully deleted contact: \"{first_name}\""
+        except Exception as e:
+            SQL_JOB_MANAGER.add(f"contact{user_id}", session.rollback())
+            return f"Error deleting contact: {str(e)}"
 
 @MCP.tool(auth=Role.mcp_has_role("user"))
 async def edit_contact(first_name:str, last_name:str = '', email:str | None = None, phone_number:str | None = None, notes:str | None = None):
@@ -103,7 +99,7 @@ async def edit_contact(first_name:str, last_name:str = '', email:str | None = No
     """
     user_id = mcp_get_user_id()
     async with Session(bind=SQL_ENGINE) as session:
-        await SQL_JOB_MANAGER.wait("user", "contact")
+        await SQL_JOB_MANAGER.wait(f"contact{user_id}")
 
         stmt = (
             select(Contact)
@@ -132,16 +128,16 @@ async def edit_contact(first_name:str, last_name:str = '', email:str | None = No
         embedding_string = Contact.format_contact_embedding_string(contact.first_name, contact.last_name, contact.email, contact.phone_number, contact.notes)
         contact.embedding = EMBEDDINGS_MODEL.encode(embedding_string).tolist()
         try:
-            SQL_JOB_MANAGER.add("contact", session.commit())
+            SQL_JOB_MANAGER.add(f"contact{user_id}", session.commit())
             return f"Successfully edited contact: \"{contact.first_name}\""
         except Exception as e:
             # Extract the message
-            SQL_JOB_MANAGER.add("contact", session.rollback())
+            SQL_JOB_MANAGER.add(f"contact{user_id}", session.rollback())
             error_message = str(e)
             return f"Failed to edit contact: {error_message}"
 
 @MCP.resource("contacts://{query_text}/{limit}/contacts", auth=Role.has_role("user"))
-def search_contacts(query_text: str, limit: int = 5):
+async def search_contacts(query_text: str, limit: int = 5):
     """
     Searches the user's contact book for contacts based on a search prompt and returns a specified amount of results in order from most to least similar.
     Contacts always include a name and usually include an email, phone number, and notes about the person.
@@ -150,20 +146,23 @@ def search_contacts(query_text: str, limit: int = 5):
         query_text(Required, type:str): A search prompt to find contacts with.
         limit(Optional, type:int): The amount of contacts to return. The default value for this is 5.
     """
+    user_id = mcp_get_user_id()
     query_vector = EMBEDDINGS_MODEL.encode(query_text).tolist()
     query_vector_bytes = sqlite_vec.serialize_float32(query_vector)
 
-    with Session(bind=SQL_ENGINE) as session:
+    async with Session(bind=SQL_ENGINE) as session:
+        await SQL_JOB_MANAGER.wait(f"contact{user_id}")
         # use cosine similarity to look up contact
         distance_expr = func.vec_distance_cosine(Contact.embedding, query_vector_bytes).label("distance")
 
         stmt = (
             select(Contact, distance_expr)
+            .where(Contact.user_id == user_id)
             .order_by(distance_expr.asc())
             .limit(limit)
         )
 
-        results = session.execute(stmt).all()
+        results = (await session.execute(stmt)).all()
         contacts: list[tuple[Contact, float]] = [(row.Contact, row.distance) for row in results]
 
         return_value = f"Found {len(results)} Contacts" + (":" if len(results) > 0 else ".")
@@ -173,8 +172,8 @@ def search_contacts(query_text: str, limit: int = 5):
         return return_value
     
 
-async def contact_suggestion(session:AsyncSession, user_id:int, first_name:str, last_name:str) -> str:
-    await SQL_JOB_MANAGER.wait("contact")
+async def contact_suggestion(session:AsyncSession, user_id:uuid.UUID, first_name:str, last_name:str) -> str:
+    await SQL_JOB_MANAGER.wait(f"contact{user_id}")
     # Make suggestions on failure to find contact
     stmt_suggestions = (
         select(Contact.first_name, Contact.last_name)
@@ -200,7 +199,8 @@ async def contact_suggestion(session:AsyncSession, user_id:int, first_name:str, 
 
     contact_suggestions:list[Contact] = suggestions_result.all()
 
-    tool_response = f"No contact was found with the name \"{first_name}{f' {last_name}' if last_name.strip() != '' else ''}\". Perhaps you meant "
+    tool_response = f"No contact was found with the name \"{first_name}{f' {last_name}' if last_name.strip() != '' else ''}\"." + \
+        (" Perhaps you meant " if len(contact_suggestions) else "")
 
     for i in range(len(contact_suggestions)-1):
         contact = contact_suggestions[i]
@@ -208,5 +208,5 @@ async def contact_suggestion(session:AsyncSession, user_id:int, first_name:str, 
     contact = contact_suggestions[i]
     tool_response += f"or \"{contact.first_name}{f' {contact.last_name}' if contact.last_name.strip() != '' else ''}\"."
 
-    SQL_JOB_MANAGER.add("contact", session.rollback())
+    SQL_JOB_MANAGER.add(f"contact{user_id}", session.rollback())
     return tool_response

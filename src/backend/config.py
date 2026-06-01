@@ -24,6 +24,7 @@ class Environment(BaseSettings):
     KEYCLOAK_ADMIN_USERNAME:str
     KEYCLOAK_ADMIN_PASSWORD:str
     KEYCLOAK_URL:str = "http://localhost:8080/"
+    REQUIRE_EMAIL_VERIFICATION:bool = False
     
 
     # DATABASE
@@ -35,6 +36,7 @@ class Environment(BaseSettings):
     APP_DB_USERNAME:str
     APP_DB_PASSWORD:str
     APP_DB:str = "application"
+    LANCEDB_URI:str = "lance.db"
 
     # BACKEND
     BACKEND_PORT:int = 8000
