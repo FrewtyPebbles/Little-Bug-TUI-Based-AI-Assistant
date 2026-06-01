@@ -43,3 +43,4 @@ littlebug
 
 # Or run the API server
 littlebug-server
+```
