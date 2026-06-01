@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: ${AUTH_DB_USERNAME}
       POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_DB_USERNAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -20,7 +20,7 @@ services:
     command: start-dev
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
       KC_DB_USERNAME: ${AUTH_DB_USERNAME}
       KC_DB_PASSWORD: ${AUTH_DB_PASSWORD}
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME}
@@ -28,23 +28,24 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      postgres:
+      postgres-keycloak:
         condition: service_healthy
 
   # APPLICATION LAYER
 
   ## Chat service
 
-  mongodb:
-    image: mongo:latest
+  cassandra:
+    image: cassandra:5.0
     restart: always
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_DB_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_DB_PASSWORD}
+      CASSANDRA_CLUSTER_NAME: littlebug
+      CASSANDRA_PASSWORD: ${CASSANDRA_PASSWORD}
+      CASSANDRA_USER: ${CASSANDRA_USER}
     ports:
-      - "27017:27017"
+      - "9042:9042"
     volumes:
-      - mongo_data:/data/db
+      - cassandra_data:/var/lib/cassandra
 
   redis:
     image: redis:7.4-alpine
@@ -66,13 +67,34 @@ services:
       POSTGRES_USER: ${APP_DB_USERNAME}
       POSTGRES_PASSWORD: ${APP_DB_PASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      test: ["CMD-SHELL", "pg_isready -U ${APP_DB_USERNAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  ## Backend API Server
+
+  backend:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"
+    env_file:
+      - ../.env
+    depends_on:
+      postgres-application:
+        condition: service_healthy
+      cassandra:
+        condition: service_started
+      redis:
+        condition: service_started
+      keycloak:
+        condition: service_started
 
 volumes:
   postgres_auth_data:
   postgres_app_data:
   redis_data:
-  mongo_data:
+  cassandra_data:

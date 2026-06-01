@@ -5,7 +5,6 @@ import uuid
 from tui_client.database.engine import SQLBase, Session
 from sqlalchemy.orm import Mapped, mapped_column, relationship, object_session, Session as SessionType
 from sqlalchemy import Column, ForeignKey, Table, event
-from backend.mongo_database.user_chat_session import UserSession
 from beanie.operators import In
 from pgvector.sqlalchemy import VECTOR
 from backend.auth import KeycloakUserInfo, KEYCLOAK_AUTH_MANAGER
@@ -124,34 +123,34 @@ class UserProxy(SQLBase):
     
 
 
-@event.listens_for(UserProxy, "after_delete")
-def mark_for_cleanup(mapper, connection, target: UserProxy):
-    session = object_session(target)
-    # Just store the ID. The session is implied because we are in session.info
-    session.info.setdefault("user_ids_to_clean", set()).add(target.user_id)
+# @event.listens_for(UserProxy, "after_delete")
+# def mark_for_cleanup(mapper, connection, target: UserProxy):
+#     session = object_session(target)
+#     # Just store the ID. The session is implied because we are in session.info
+#     session.info.setdefault("user_ids_to_clean", set()).add(target.user_id)
 
-@event.listens_for(Session, "after_rollback")
-def cleanup_on_failure(session: SessionType):
-    session.info["user_ids_to_clean"] = set()
+# @event.listens_for(Session, "after_rollback")
+# def cleanup_on_failure(session: SessionType):
+#     session.info["user_ids_to_clean"] = set()
 
-@event.listens_for(Session, "after_commit")
-def clean_up_after_commit(session: SessionType):
-    user_ids = list(session.info.get("user_ids_to_clean", []))
-    if not user_ids:
-        return
+# @event.listens_for(Session, "after_commit")
+# def clean_up_after_commit(session: SessionType):
+#     user_ids = list(session.info.get("user_ids_to_clean", []))
+#     if not user_ids:
+#         return
 
-    async def async_cleanup(ids):
-        await UserSession.find(In(UserSession.user_id, ids)).delete()
+#     async def async_cleanup(ids):
+#         await UserSession.find(In(UserSession.user_id, ids)).delete()
 
-    try:
-        loop = asyncio.get_running_loop()
-        # Fire and forget in the background
-        loop.create_task(async_cleanup(user_ids))
-    except RuntimeError:
-        # Fallback for sync environments (like management scripts)
-        asyncio.run(async_cleanup(user_ids))
+#     try:
+#         loop = asyncio.get_running_loop()
+#         # Fire and forget in the background
+#         loop.create_task(async_cleanup(user_ids))
+#     except RuntimeError:
+#         # Fallback for sync environments (like management scripts)
+#         asyncio.run(async_cleanup(user_ids))
     
-    # Final wipe of the info dictionary
-    session.info["user_ids_to_clean"] = set()
+#     # Final wipe of the info dictionary
+#     session.info["user_ids_to_clean"] = set()
 
     

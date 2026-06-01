@@ -11,8 +11,8 @@ import asyncio
 SQL_URL = URL.create(
     drivername="postgresql+asyncpg",
     username=ENVIRONMENT.APP_DB_USERNAME,
-    password=ENVIRONMENT.APP_DB_PASSWORD, # Handles special characters for you
-    host="localhost",
+    password=ENVIRONMENT.APP_DB_PASSWORD,
+    host=ENVIRONMENT.APP_DB_HOST,
     port=5432,
     database=ENVIRONMENT.APP_DB
 )

@@ -30,13 +30,16 @@ class Environment(BaseSettings):
     # DATABASE
     AUTH_DB_USERNAME:str
     AUTH_DB_PASSWORD:str
-    MONGO_DB_USERNAME:str
-    MONGO_DB_PASSWORD:str
     REDIS_PASSWORD:str
     APP_DB_USERNAME:str
     APP_DB_PASSWORD:str
     APP_DB:str = "application"
-    LANCEDB_URI:str = "lance.db"
+    APP_DB_HOST:str = "localhost"
+    
+    # cassandra
+    CASSANDRA_HOST: str = "localhost"
+    CASSANDRA_USER: str
+    CASSANDRA_PASSWORD: str
 
     # BACKEND
     BACKEND_PORT:int = 8000

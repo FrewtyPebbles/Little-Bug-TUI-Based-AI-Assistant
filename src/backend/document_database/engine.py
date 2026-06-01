@@ -1,17 +1,18 @@
-from cassandra import cluster
+from cassandra.cluster import Cluster
+from cassandra.auth import PlainTextAuthProvider
+from backend.config import ENVIRONMENT
 
-def create_session():
-    cluster = Cluster()
-    session = cluster.connect()
+def __create_cassandra_connection(host:str = ENVIRONMENT.CASSANDRA_HOST):
+    auth_provider = PlainTextAuthProvider(
+        username=ENVIRONMENT.CASSANDRA_USER,
+        password=ENVIRONMENT.CASSANDRA_PASSWORD
+    )
+    CASSANDRA_CLUSTER = Cluster(
+        [host],
+        auth_provider=auth_provider
+    )
+    CASSANDRA_SESSION = CASSANDRA_CLUSTER.connect()
 
-    # Create keyspace, if already have keyspace your can skip this
-    os.environ['CQLENG_ALLOW_SCHEMA_MANAGEMENT'] = 'true'
-    connection.register_connection('cqlengine', session=session, default=True)
-    management.create_keyspace_simple('example', replication_factor=1)
-    management.sync_table(User, keyspaces=['example'])
+    return CASSANDRA_CLUSTER, CASSANDRA_SESSION
 
-    # Wrap cqlengine connection
-    aiosession_for_cqlengine(session)
-    session.set_keyspace('example')
-    connection.set_session(session)
-    return session
+CASSANDRA_CLUSTER, CASSANDRA_SESSION = __create_cassandra_connection()
